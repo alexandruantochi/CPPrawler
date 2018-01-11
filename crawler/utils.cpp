@@ -40,27 +40,36 @@ LPSTR* readAdressesFromRegistry(LPCSTR registryName)
 		_error("Failed to query key information.");
 	}
 
-	if (NULL == (siteLinks = (LPSTR*)LocalAlloc(LPTR, sizeof(CHAR*)*valueCount)))
+	if (NULL == (siteLinks = (LPSTR*)LocalAlloc(LPTR, sizeof(LPSTR)*valueCount)))
 	{
 		_error("Error allocating memory for the site links read from the registry.");
 	}
 
+
+	DWORD cbData;
 	LPTSTR lpvalueName = (LPTSTR)LocalAlloc(LPTR, 256);
-	DWORD cchValueName = 256;
 	LPDWORD lpType = (LPDWORD)LocalAlloc(LPTR, sizeof(DWORD));
-	LPBYTE lpData = (LPBYTE)LocalAlloc(LPTR, sizeof(maxKeyValueSize + 1));
-	DWORD cbData = maxKeyValueSize + 1;
-	unsigned char nullChar = '\0';
+
 
 	for (DWORD i = 0; i < valueCount; i++)
 	{
-		if (ERROR_SUCCESS != (RegEnumValue(hkResult, i, lpvalueName, &cchValueName, NULL, lpType, lpData, &cbData)))
+
+		cbData = maxKeyValueSize;
+		DWORD cchValueName = 256;
+		LPBYTE lpData = (LPBYTE)LocalAlloc(LPTR, sizeof(BYTE)*maxKeyValueSize);
+
+		if (ERROR_SUCCESS != (errCode = RegEnumValue(hkResult, i, lpvalueName, &cchValueName, NULL, lpType, lpData, &cbData)))
 		{
-			_error("Error reading key value index:", reinterpret_cast<char const *>(i));
+			SetLastError(errCode);
+			_error("Error reading key value index");
 		}
 
-		lpData[maxKeyValueSize] = nullChar;
+		if (*lpType != REG_SZ)
+		{
+			continue;
+		}
 
+		siteLinks[i] = (LPSTR)lpData;
 
 
 	}
