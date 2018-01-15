@@ -4,6 +4,10 @@
 
 
 std::set<std::string> visitedLinks;
+std::map<std::string, DWORD> threadComm;
+HANDLE hMutex;
+INT continueListening = 1;
+
 
 #define MAX_URLS 256
 
@@ -63,7 +67,7 @@ bool processPage(LPCSTR filePath, LPDWORD fileSize, LPCSTR pageUrl, LPSTR* pageU
 
 	while (ReadFile(hFile, buffer, 2048, &bytesRead, NULL) && bytesRead)
 	{
-		if (k == MAX_URLS-1)
+		if (k == MAX_URLS - 1)
 		{
 			pageUrls[k] = NULL;
 			LocalFree(buffer);
@@ -110,7 +114,7 @@ bool processPage(LPCSTR filePath, LPDWORD fileSize, LPCSTR pageUrl, LPSTR* pageU
 
 			currentUrl = (LPSTR)LocalAlloc(LPTR, sizeof(CHAR) * 256);
 
-	
+
 
 			memcpy(currentUrl, href + 6, j - 6);
 			currentUrl[j - 6] = '\0';
@@ -259,20 +263,33 @@ void crawl(LPCSTR currentUrl, UINT depth, UINT maxDepth)
 		return;
 	}
 
-	printf("Processing %s\n", currentUrl);
 	if (!processPage(filePath, size, currentUrl, pageUrls))
 	{
 		return;
 	}
 
-	printf("%s has size %d\n", currentUrl, *size);
+	if (WAIT_TIMEOUT == WaitForSingleObject(hMutex,INFINITE))
+	{
+		_error("Mutex timed out @crawler.\n");
+	}
+
+
+
+	threadComm[currentUrl] = *size;
+
+	if (!ReleaseMutex(hMutex))
+	{
+		_error("Error releasing mutex.");
+	}
+
+	
 	INT i = 0;
 
 	LocalFree(size);
 
 	while (pageUrls[i] != NULL)
 	{
-		if (visitedLinks.find(currentUrl) == visitedLinks.end())
+		if (visitedLinks.find(pageUrls[i]) == visitedLinks.end())
 		{
 			visitedLinks.insert(pageUrls[i]);
 			crawl(*(pageUrls + i), depth + 1, maxDepth);
@@ -287,27 +304,112 @@ void crawl(LPCSTR currentUrl, UINT depth, UINT maxDepth)
 
 }
 
-void startCrawler()
+DWORD WINAPI startCrawlerThread(LPVOID lParam)
 {
+	printf("Crawler thread started.\n");
+
 	INT i = 0;
 	LPSTR* links = (LPSTR*)LocalAlloc(LPTR, sizeof(CHAR*) * 256);
 	readAdressesFromRegistry("SOFTWARE\\WOW6432Node\\WebCrawler", links);
 
-	crawl("https://www.google.com/", 0, 1);
-
-	/*
 	while (links[i] != NULL)
 	{
+		crawl(links[i], 0, 1);
+		i++;
+	}
+
+	continueListening = 0;
+
+	LocalFree(links);
+
+	printf("Crawler thread finished.\n");
+	return 0;
+}
+
+DWORD WINAPI startSenderThread(LPVOID lParam)
+{
+
+	printf("Transmitter thread started.\n");
+
+	while (continueListening)
+	{
+		if (WAIT_TIMEOUT == WaitForSingleObject(hMutex, INFINITE))
+		{
+			_error("Mutex timed out @sender.\n");
+		}
+
+		if (!threadComm.empty())
+		{
+			auto itt = threadComm.begin();
+
+			printf("Visited %s with size of %d.\n", itt->first.c_str(), itt->second);
+
+			threadComm.erase(itt->first);
+
+
+			// another mutex for the reciever
+
+
+
+			// release mutex for the reciever
+		}
+
+		if (!ReleaseMutex(hMutex))
+		{
+			_error("Error releasing mutex.");
+		}
 
 	}
+
+	printf("Sender thread finished.\n");
+	return 0;
+
+}
+
+void initCrawler()
+{
+
+	HANDLE crawlerThread;
+	HANDLE senderThread;
+
+	if (NULL == (senderThread = CreateThread(NULL, 0, startSenderThread, NULL, CREATE_SUSPENDED,NULL)))
+	{
+		_error("Error creating sender thread.");
+	}
+
+	if (NULL == (crawlerThread = CreateThread(NULL, 0, startCrawlerThread, NULL, CREATE_SUSPENDED, NULL)))
+	{
+		_error("Error creating crawler thread.");
+	}
+
+	if (NULL == (hMutex = CreateMutex(NULL, FALSE, TEXT("producerMutex"))))
+	{
+		_error("Error creating mutex.");
+	}
+
+	DWORD suspendCount;
+	if (-1 == (suspendCount = ResumeThread(crawlerThread)))
+	{
+		_error("Error starting crawler thread.");
 	
-		downloadPage("https://profs.info.uaic.ro/~rbenchea/csso.html");
-		parseUrl("https://profs.info.uaic.ro/some/get/request", PARSEURL_FILENAME);
+	}
 
-		DWORD fileSize;
+	if (-1 == (suspendCount = ResumeThread(senderThread)))
+	{
+		_error("Error starting sender thread.");
 
-		processPage("F:\\Scoala\\Anul III\\Sem I\\CSSO\\Lab\\Proiect\\downloads\\profs_info_uaic_ro_~rbenchea_csso_html_13040", &fileSize, "http://profs.info.uaic.ro/~rbenchea/");
+	}
 
-		printf("filesize");
-		*/
+	if (0 == TerminateThread(crawlerThread, 0))
+	{
+		_error("Could not terminate crawler thread");
+	}
+
+	if (0 == TerminateThread(senderThread, 0))
+	{
+		_error("Could not terminate sender thread");
+	}
+
+	Sleep(INFINITE);
+
 }
