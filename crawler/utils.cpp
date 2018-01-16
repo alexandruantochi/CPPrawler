@@ -1,4 +1,7 @@
 #include "stdafx.h"
+#include <stdexcept>
+
+#define FORMAT "%s::%ul"
 
 
 void _error(const char message[])
@@ -30,7 +33,7 @@ bool linkHasValidExt(LPCSTR link)
 	{
 		return true;
 	}
-	
+
 	if (!StrCmp(extension, ".html") || !StrCmp(extension, ".xhtml"))
 	{
 		return true;
@@ -54,7 +57,7 @@ bool linkHasExtension(LPCSTR link)
 		}
 		i++;
 	}
-	
+
 
 	return (strlen(link + marker) < 6);
 }
@@ -99,7 +102,7 @@ bool joinRootLink(LPCSTR url, LPSTR link)
 bool joinLink(LPCSTR url, LPSTR link)
 {
 	LPSTR finder;
-	LPSTR result = (LPSTR)LocalAlloc(LPTR,sizeof(CHAR) * 256);
+	LPSTR result = (LPSTR)LocalAlloc(LPTR, sizeof(CHAR) * 256);
 	StrCpy(result, url);
 
 	finder = strrchr(result, '/');
@@ -174,7 +177,7 @@ LPSTR parseUrl(LPCSTR pageUrl, unsigned int type)
 		StrCat(result, "/");
 		break;
 	case 5:
-		
+
 		while (*(result + i) != '\0')
 		{
 			if (*(result + i) == '/')
@@ -183,11 +186,36 @@ LPSTR parseUrl(LPCSTR pageUrl, unsigned int type)
 			}
 			i++;
 		}
-		*(result + offset+1)= '\0';
+		*(result + offset + 1) = '\0';
 		break;
 	default:
 		_error("Invalid argument for parseUrl function.");
 	}
 
 	return result;
+}
+
+
+void createDataFile(PHANDLE fileMapping, LPVOID mapView)
+{
+
+
+	if (NULL == (*fileMapping = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_EXECUTE_READWRITE, 0, 1024, TEXT("crawler"))))
+	{
+		_error("Error creating producer file mapping");
+	}
+
+	if (NULL == (mapView = MapViewOfFile(fileMapping, FILE_MAP_ALL_ACCESS, 0, 0, 0)))
+	{
+		_error("Error mapping view of file.");
+	}
+
+}
+
+void sendData(LPVOID mappedView, LPCSTR siteLink, DWORD siteSize)
+{
+	if (!sprintf((char*)mappedView, FORMAT, siteLink, siteSize))
+	{
+		printf("Error printing to mapped file.\n");
+	}
 }

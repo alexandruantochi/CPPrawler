@@ -1,12 +1,13 @@
 #include "stdafx.h"
-#include <stdexcept>
+
 #include <cstring>
 
 
 std::set<std::string> visitedLinks;
 std::map<std::string, DWORD> threadComm;
-HANDLE hMutex;
+HANDLE threadSync;
 INT continueListening = 1;
+LPVOID mapView;
 
 
 #define MAX_URLS 256
@@ -268,16 +269,14 @@ void crawl(LPCSTR currentUrl, UINT depth, UINT maxDepth)
 		return;
 	}
 
-	if (WAIT_TIMEOUT == WaitForSingleObject(hMutex,INFINITE))
+	if (WAIT_TIMEOUT == WaitForSingleObject(threadSync,INFINITE))
 	{
 		_error("Mutex timed out @crawler.\n");
 	}
 
-
-
 	threadComm[currentUrl] = *size;
 
-	if (!ReleaseMutex(hMutex))
+	if (!ReleaseMutex(threadSync))
 	{
 		_error("Error releasing mutex.");
 	}
@@ -318,45 +317,79 @@ DWORD WINAPI startCrawlerThread(LPVOID lParam)
 		i++;
 	}
 
-	continueListening = 0;
+	
 
 	LocalFree(links);
 
 	printf("Crawler thread finished.\n");
+	continueListening = 0;
 	return 0;
 }
 
 DWORD WINAPI startSenderThread(LPVOID lParam)
 {
+	HANDLE consumerEvent;
+	HANDLE producerEvent;
 
+	bool dataWasRead;
+
+	std::map<std::string, DWORD>::iterator itt;
+	LPCSTR siteLink=NULL;
+	DWORD siteSize;
+
+	if (NULL == (consumerEvent = CreateEvent(NULL, FALSE, TRUE, TEXT("producerEvent"))))
+	{
+		_error("Error creating producer event.");
+	}
+
+	if (NULL == (producerEvent = OpenEvent(SYNCHRONIZE, FALSE, TEXT("consumerEvent"))))
+	{
+		_error("Error creating consumer event.");
+	}
+
+	
 	printf("Transmitter thread started.\n");
 
 	while (continueListening)
 	{
-		if (WAIT_TIMEOUT == WaitForSingleObject(hMutex, INFINITE))
+		if (WAIT_TIMEOUT == WaitForSingleObject(threadSync, INFINITE))
 		{
 			_error("Mutex timed out @sender.\n");
 		}
 
-		if (!threadComm.empty())
+		if (dataWasRead=!threadComm.empty())
 		{
-			auto itt = threadComm.begin();
+			itt = threadComm.begin();
 
-			printf("Visited %s with size of %d.\n", itt->first.c_str(), itt->second);
+			siteLink = itt->first.c_str();
+
+			siteSize = itt->second;
 
 			threadComm.erase(itt->first);
-
-
-			// another mutex for the reciever
-
-
-
-			// release mutex for the reciever
+			
 		}
 
-		if (!ReleaseMutex(hMutex))
+		if (!ReleaseMutex(threadSync))
 		{
 			_error("Error releasing mutex.");
+		}
+
+		if (dataWasRead)
+		{
+			dataWasRead = false;
+
+			if (WAIT_TIMEOUT == WaitForSingleObject(consumerEvent, INFINITE))
+			{
+				_error("Event timed out.");
+			}
+
+			sendData(mapView, siteLink,siteSize);
+
+			if (!SetEvent(producerEvent))
+			{
+				_error("Error setting producer event.");
+			}
+
 		}
 
 	}
@@ -371,6 +404,10 @@ void initCrawler()
 
 	HANDLE crawlerThread;
 	HANDLE senderThread;
+	HANDLE mappedFile;
+	
+	createDataFile(&mappedFile, mapView);
+
 
 	if (NULL == (senderThread = CreateThread(NULL, 0, startSenderThread, NULL, CREATE_SUSPENDED,NULL)))
 	{
@@ -382,24 +419,27 @@ void initCrawler()
 		_error("Error creating crawler thread.");
 	}
 
-	if (NULL == (hMutex = CreateMutex(NULL, FALSE, TEXT("producerMutex"))))
+	if (NULL == (threadSync = CreateMutex(NULL, FALSE, TEXT("threadSync"))))
 	{
-		_error("Error creating mutex.");
+		_error("Error creating threadsync mutex.");
 	}
 
-	DWORD suspendCount;
-	if (-1 == (suspendCount = ResumeThread(crawlerThread)))
+
+	if (-1 == (ResumeThread(crawlerThread)))
 	{
 		_error("Error starting crawler thread.");
 	
 	}
 
-	if (-1 == (suspendCount = ResumeThread(senderThread)))
+	if (-1 == (ResumeThread(senderThread)))
 	{
 		_error("Error starting sender thread.");
 
 	}
 
+	Sleep(INFINITE);
+
+	/*
 	if (0 == TerminateThread(crawlerThread, 0))
 	{
 		_error("Could not terminate crawler thread");
@@ -409,7 +449,7 @@ void initCrawler()
 	{
 		_error("Could not terminate sender thread");
 	}
-
-	Sleep(INFINITE);
+	*/
+	
 
 }
