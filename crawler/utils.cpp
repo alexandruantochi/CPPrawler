@@ -1,7 +1,7 @@
 #include "stdafx.h"
 #include <stdexcept>
 
-#define FORMAT "%s::%ul"
+
 
 
 void _error(const char message[])
@@ -39,6 +39,7 @@ bool linkHasValidExt(LPCSTR link)
 		return true;
 	}
 
+
 	return false;
 
 }
@@ -64,10 +65,19 @@ bool linkHasExtension(LPCSTR link)
 
 bool isLinkWebsite(LPCSTR link)
 {
+	LPSTR protocol = (LPSTR)LocalAlloc(LPTR, sizeof(CHAR) * 8);
+	memcpy(protocol, link, 7);
+	*(protocol + 7) = '\0';
 
-	LPSTR protocol = StrStr(link, "http");
+	if (!StrCmp(protocol, "http://") || !StrCmp(protocol, "https:/"))
+	{
+		LocalFree(protocol);
+		return true;
+	}
 
-	return protocol == link;
+	LocalFree(protocol);
+	return false;
+
 }
 
 bool isLinkToRoot(LPCSTR link)
@@ -115,52 +125,13 @@ bool joinLink(LPCSTR url, LPSTR link)
 }
 
 
-LPSTR parseUrl(LPCSTR pageUrl, unsigned int type)
+LPSTR parseUrlToFile(LPCSTR pageUrl)
 {
 	INT offset = 0;
 	INT i = 0;
 	LPSTR result = (LPSTR)LocalAlloc(LPTR, sizeof(CHAR) * 256);
 	StrCpy(result, pageUrl);
 
-
-	switch (type)
-	{
-	case 0:
-		while (*(result + i) != ':')
-		{
-			i++;
-			if (i > 5)
-			{
-				return NULL;
-			}
-		}
-		*(result + i) = '\0';
-		break;
-	case 1:
-		while (*(result + i) != '/')
-		{
-			i++;
-		}
-		result = &(*(result + (i + 2)));
-		i = 0;
-		while (*(result + i) != '/')
-		{
-			i++;
-		}
-		*(result + i) = '\0';
-		break;
-	case 2:
-		while (*(result + i) != '.')
-		{
-			i++;
-		}
-		while (*(result + i) != '/')
-		{
-			i++;
-		}
-		result = &(*(result + i));
-		break;
-	case 3:
 		while (*(result + i) != '\0')
 		{
 			if (*(result + i) == '/' || *(result + i) == '.' || *(result + i) == ':' || *(result + i) == '?' || *(result + i) == '*')
@@ -169,36 +140,13 @@ LPSTR parseUrl(LPCSTR pageUrl, unsigned int type)
 			}
 			i++;
 		}
-		break;
-	case 4:
-		result = parseUrl(pageUrl, PARSEURL_PROTOCOL);
-		StrCat(result, "://");
-		StrCat(result, parseUrl(pageUrl, PARSEURL_BASEURL));
-		StrCat(result, "/");
-		break;
-	case 5:
-
-		while (*(result + i) != '\0')
-		{
-			if (*(result + i) == '/')
-			{
-				offset = i;
-			}
-			i++;
-		}
-		*(result + offset + 1) = '\0';
-		break;
-	default:
-		_error("Invalid argument for parseUrl function.");
-	}
-
+	
 	return result;
 }
 
 
 void createDataFile(PHANDLE fileMapping, LPVOID mapView)
 {
-
 
 	if (NULL == (*fileMapping = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_EXECUTE_READWRITE, 0, 1024, TEXT("crawler"))))
 	{
@@ -212,10 +160,11 @@ void createDataFile(PHANDLE fileMapping, LPVOID mapView)
 
 }
 
-void sendData(LPVOID mappedView, LPCSTR siteLink, DWORD siteSize)
+void sendData(LPVOID mFileHandle, LPSTR siteLink, DWORD siteSize)
 {
-	if (!sprintf((char*)mappedView, FORMAT, siteLink, siteSize))
+	if (!sprintf((char*)mFileHandle, FORMAT, siteLink, siteSize))
 	{
 		printf("Error printing to mapped file.\n");
 	}
+
 }
