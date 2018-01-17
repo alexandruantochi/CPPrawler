@@ -42,7 +42,28 @@ void init()
 
 	}
 
-	Sleep(INFINITE);
+	DWORD exitCode=0;
+
+	while (true)
+	{
+		Sleep(1000);
+
+		printf("Restarting crawler thread...\n");
+
+		if (!TerminateThread(crawlerThread, exitCode))
+		{
+			printf("Error terminating crawler thread.\n");
+		}
+
+		if (NULL == (crawlerThread = CreateThread(NULL, 0, startCrawlerThread, NULL, 0, NULL)))
+		{
+			_error("Error restarting crawler thread.");
+		}
+
+	}
+
+
+
 
 	/*
 	if (0 == TerminateThread(crawlerThread, 0))

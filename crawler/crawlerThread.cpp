@@ -5,23 +5,25 @@ void crawl(LPCSTR currentUrl, UINT depth, UINT maxDepth);
 
 DWORD WINAPI startCrawlerThread(LPVOID lParam)
 {
-	printf("Crawler thread started.\n");
+	
+		printf("Crawler thread started.\n");
 
-	INT i = 0;
-	LPSTR* links = (LPSTR*)LocalAlloc(LPTR, sizeof(CHAR*) * 256);
-	readAdressesFromRegistry("SOFTWARE\\WOW6432Node\\WebCrawler", links);
+		INT i = 0;
+		LPSTR* links = (LPSTR*)LocalAlloc(LPTR, sizeof(CHAR*) * 256);
+		readAdressesFromRegistry("SOFTWARE\\WOW6432Node\\WebCrawler", links);
 
-	while (links[i] != NULL)
-	{
-		crawl(links[i], 0, 4);
-		i++;
-	}
+		while (links[i] != NULL)
+		{
+			crawl(links[i], 0, 4);
+			i++;
+		}
 
-	LocalFree(links);
+		LocalFree(links);
 
-	printf("Crawler thread finished.\n");
-	continueListening = 1;
-	return 0;
+		printf("Crawler thread finished.\n");
+		continueListening = 1;
+		return 0;
+	
 }
 
 
@@ -69,6 +71,7 @@ void crawl(LPCSTR currentUrl, UINT depth, UINT maxDepth)
 
 	LocalFree(size);
 	INT i = 0;
+
 	while (pageUrls[i] != NULL && isLinkWebsite(pageUrls[i]))
 	{
 		if (visitedLinks.find(pageUrls[i]) == visitedLinks.end())
